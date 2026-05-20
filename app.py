@@ -5,6 +5,9 @@ st.set_page_config(page_title="OFC Overbooking App", layout="centered")
 st.title("OFC オーバーブッキング予測（曜日別）")
 st.caption("過去2週間のキャンセル実績から曜日別推奨を算出")
 
+# 安全モード選択
+mode = st.radio("安全モードを選択", ["標準（実測値）", "慎重（安全側推定）"])
+
 days = {
     "月曜日": 4,
     "火曜日": 8,
@@ -16,6 +19,7 @@ days = {
 risk_threshold = 0.20  # 破綻確率20%未満を推奨
 
 for day, slots in days.items():
+
     st.subheader(f"📅 {day}（通常{slots}枠）")
 
     total_slots = slots * 2
@@ -27,14 +31,24 @@ for day, slots in days.items():
         key=day
     )
 
+    if total_slots == 0:
+        continue
+
     alpha = cancels + 1
     beta_post = total_slots - cancels + 1
-    p_lower = beta.ppf(0.05, alpha, beta_post)
+
+    # キャンセル率の選択
+    if mode == "慎重（安全側推定）":
+        p_use = beta.ppf(0.05, alpha, beta_post)
+    else:
+        p_use = cancels / total_slots
+
+    st.write(f"使用キャンセル率: {p_use*100:.1f}%")
 
     results = []
 
     for k in range(0, slots + 1):
-        prob_break = binom.cdf(k - 1, slots, p_lower)
+        prob_break = binom.cdf(k - 1, slots, p_use)
         results.append((k, prob_break))
 
     # 推奨枠算出
