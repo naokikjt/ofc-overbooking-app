@@ -3,7 +3,7 @@ from scipy.stats import beta, binom
 
 st.set_page_config(page_title="OFC Overbooking App", layout="centered")
 st.title("OFC オーバーブッキング予測（曜日別）")
-st.caption("過去2週間データから曜日別推奨")
+st.caption("過去2週間のキャンセル実績から曜日別推奨を算出")
 
 days = {
     "月曜日": 4,
@@ -13,38 +13,40 @@ days = {
     "金曜日": 4
 }
 
-st.header("過去2週間のキャンセル入力")
-
-results_summary = {}
+risk_threshold = 0.20  # 破綻確率20%未満を推奨
 
 for day, slots in days.items():
-    st.subheader(day)
+    st.subheader(f"📅 {day}（通常{slots}枠）")
 
     total_slots = slots * 2
     cancels = st.number_input(
-        f"{day} のキャンセル数（2週間合計）",
+        f"{day} のキャンセル数（過去2週間合計）",
         min_value=0,
         max_value=total_slots,
         value=0,
         key=day
     )
 
-    if cancels > total_slots:
-        st.error("キャンセル数が枠数を超えています")
-    else:
-        alpha = cancels + 1
-        beta_post = total_slots - cancels + 1
+    alpha = cancels + 1
+    beta_post = total_slots - cancels + 1
+    p_lower = beta.ppf(0.05, alpha, beta_post)
 
-        # 安全側（5%下限）
-        p_lower = beta.ppf(0.05, alpha, beta_post)
+    results = []
 
-        st.write(f"推定キャンセル率（安全側）: {p_lower*100:.1f}%")
+    for k in range(0, slots + 1):
+        prob_break = binom.cdf(k - 1, slots, p_lower)
+        results.append((k, prob_break))
 
-        st.write("オーバーブッキングごとの破綻確率:")
+    # 推奨枠算出
+    safe_options = [k for k, prob in results if prob < risk_threshold]
+    recommended = max(safe_options) if safe_options else 0
 
-        for k in range(0, slots + 1):
-            prob_cancel_less = binom.cdf(k - 1, slots, p_lower)
-            prob_break = prob_cancel_less
-            st.write(f"+{k}枠 → 破綻確率 {prob_break*100:.1f}%")
+    st.success(f"推奨オーバーブッキング枠：＋{recommended}枠")
 
-        st.divider()
+    st.write("各追加枠での破綻確率：")
+
+    for k, prob in results:
+        color = "🟢" if k == recommended else ""
+        st.write(f"{color} +{k}枠 → 破綻確率 {prob*100:.1f}%")
+
+    st.divider()
